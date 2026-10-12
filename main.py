@@ -89,6 +89,68 @@ def get_entries(kind=None):
         return [dict(row) for row in rows]
 
 
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await deny_unauthorized(update):
+        return
+
+    message = update.effective_message
+    if message is None:
+        return
+
+    query = " ".join(context.args).strip()
+
+    if not query:
+        await message.reply_text(
+            "🔎 What memory are we looking for?\n"
+            "Usage: /search keyword\n"
+            "Example: /search princess"
+        )
+        return
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+
+            rows = conn.execute(
+                """
+                SELECT id, kind, content, created_at
+                FROM entries
+                WHERE content LIKE ?
+                ORDER BY id DESC
+                LIMIT 10
+                """,
+                (f"%{query}%",),
+            ).fetchall()
+
+    except sqlite3.Error:
+        await message.reply_text(
+            "💫 I couldn't search our memories right now. "
+            "Please try again later."
+        )
+        return
+
+    if not rows:
+        await message.reply_text(
+            f"🌙 No memories found for: {query}"
+        )
+        return
+
+    results = [f"🔎 Memories matching: {query}\n"]
+
+    for row in rows:
+        results.append(
+            f"💗 {row['kind']} · {row['created_at']}\n"
+            f"{row['content']}"
+        )
+
+    response = "\n\n".join(results)
+
+    # Keep the Telegram message within its length limit.
+    if len(response) > 4000:
+        response = response[:3950] + "\n\n…Results shortened."
+
+    await message.reply_text(response)
+
 async def start_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -359,6 +421,7 @@ def main():
     app.add_handler(CommandHandler("timeline", timeline_command))
     app.add_handler(CommandHandler("nicknames", nicknames_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
+    app.add_handler(CommandHandler("search", search_command))
 
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
