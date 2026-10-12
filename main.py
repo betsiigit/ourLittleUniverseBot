@@ -14,14 +14,32 @@ from telegram.ext import (
     filters,
 )
 
-# Read your new token from an environment variable.
-TOKEN:Final= '8665822377:AAHkKN3QipqSwl6uP_BgK_fnvITGg4ilwII'
-
-# Replace this with your actual Telegram bot username.
+TOKEN: Final = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_USERNAME: Final = "@OurLittleUniverseBot"
+
+OWNER_ID = int(os.getenv("TELEGRAM_OWNER_ID", "0"))
+COOWNER_ID = int(os.getenv("TELEGRAM_COOWNER_ID", "0"))
 
 DB_PATH = Path(__file__).with_name("our_story.db")
 
+
+
+def is_authorized(update: Update) -> bool:
+    """Allow only the owner and approved co-owner."""
+    user = update.effective_user
+    return user is not None and user.id in {OWNER_ID, COOWNER_ID}
+
+
+async def deny_unauthorized(update: Update) -> bool:
+    """Block users who are not authorized."""
+    if not is_authorized(update):
+        message = update.effective_message
+        if message:
+            await message.reply_text(
+                "🔒 This little universe is private. 💗"
+            )
+        return True
+    return False
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
@@ -166,9 +184,13 @@ async def cancel_command(
     )
 
 
-async def story_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+
+async def story_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await deny_unauthorized(update):
+        return
+
+    entries = get_entries()
+
     entries = get_entries()
 
     if not entries:
@@ -247,9 +269,13 @@ async def nicknames_command(
     )
 
 
-async def handle_message(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await deny_unauthorized(update):
+        return
+
+    
+
     message = update.effective_message
 
     if not message or not message.text:
